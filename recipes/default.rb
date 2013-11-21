@@ -41,11 +41,11 @@ node.set_unless['wordpress']['content_dir'] = 'wp-content'
 node.set_unless['wordpress']['wp_debug'] = false
 node.set_unless['wordpress']['table_prefix'] = 'wp_'
 
+node.set_unless['wordpress']['install'] = true
+
 node.set_unless['wordpress']['custom_options'] = {}
 
-installingWP = !node['wordpress']['install'].exists? or node['wordpress']['install']
-
-if installingWP
+if node['wordpress']['install']
   if node['wordpress']['version'] == 'latest'
     # WordPress.org does not provide a sha256 checksum, so we'll use the sha1 they do provide
     require 'digest/sha1'
@@ -151,7 +151,7 @@ apache_site "000-default" do
   enable false
 end
 
-if installingWP
+if node['wordpress']['install']
   ruby_block "Rename wp-content directory" do
     block do
       require 'fileutils'
