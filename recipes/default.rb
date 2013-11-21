@@ -42,6 +42,7 @@ node.set_unless['wordpress']['wp_debug'] = false
 node.set_unless['wordpress']['table_prefix'] = 'wp_'
 
 node.set_unless['wordpress']['install'] = true
+node.set_unless['wordpress']['have_ssl'] = false
 
 node.set_unless['wordpress']['custom_options'] = {}
 
@@ -132,6 +133,7 @@ template "#{node['wordpress']['dir']}/wp-config.php" do
   group "root"
   mode "0644"
   variables(
+    :have_ssl        => node['wordpress']['wordpress']['have_ssl'],
     :database        => node['wordpress']['db']['database'],
     :user            => node['wordpress']['db']['user'],
     :password        => node['wordpress']['db']['password'],

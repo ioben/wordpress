@@ -1,4 +1,3 @@
-NameVirtualhost *:443
 <VirtualHost *:80>
   ServerName <%= @params[:server_name] %>
   ServerAlias <% @params[:server_aliases].each do |a| %><%= a %> <% end %>
@@ -25,6 +24,7 @@ NameVirtualhost *:443
   RewriteLogLevel 0
 
 </VirtualHost>
+<% if @params[:have_ssl] %>
 <VirtualHost *:443>
   ServerName <%= @params[:server_name] %>:443
   ServerAlias <% @params[:server_aliases].each do |a| %><%= a %> <% end %>
@@ -55,3 +55,4 @@ NameVirtualhost *:443
   RewriteLogLevel 0
 
 </VirtualHost>
+<% end %>
