@@ -133,7 +133,7 @@ template "#{node['wordpress']['dir']}/wp-config.php" do
   group "root"
   mode "0644"
   variables(
-    :have_ssl        => node['wordpress']['wordpress']['have_ssl'],
+    :have_ssl        => node['wordpress']['have_ssl'],
     :database        => node['wordpress']['db']['database'],
     :user            => node['wordpress']['db']['user'],
     :password        => node['wordpress']['db']['password'],
