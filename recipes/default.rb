@@ -43,38 +43,41 @@ node.set_unless['wordpress']['table_prefix'] = 'wp_'
 
 node.set_unless['wordpress']['custom_options'] = {}
 
+installingWP = !node['wordpress']['install'].exists? or node['wordpress']['install']
 
-if node['wordpress']['version'] == 'latest'
-  # WordPress.org does not provide a sha256 checksum, so we'll use the sha1 they do provide
-  require 'digest/sha1'
-  require 'open-uri'
-  local_file = "#{Chef::Config[:file_cache_path]}/wordpress-latest.tar.gz"
-  latest_sha1 = open('http://wordpress.org/latest.tar.gz.sha1') {|f| f.read }
-  unless File.exists?(local_file) && ( Digest::SHA1.hexdigest(File.read(local_file)) == latest_sha1 )
-    remote_file "#{Chef::Config[:file_cache_path]}/wordpress-latest.tar.gz" do
-      source "http://wordpress.org/latest.tar.gz"
+if installingWP
+  if node['wordpress']['version'] == 'latest'
+    # WordPress.org does not provide a sha256 checksum, so we'll use the sha1 they do provide
+    require 'digest/sha1'
+    require 'open-uri'
+    local_file = "#{Chef::Config[:file_cache_path]}/wordpress-latest.tar.gz"
+    latest_sha1 = open('http://wordpress.org/latest.tar.gz.sha1') {|f| f.read }
+    unless File.exists?(local_file) && ( Digest::SHA1.hexdigest(File.read(local_file)) == latest_sha1 )
+      remote_file "#{Chef::Config[:file_cache_path]}/wordpress-latest.tar.gz" do
+        source "http://wordpress.org/latest.tar.gz"
+        mode "0644"
+      end
+    end
+  else
+    remote_file "#{Chef::Config[:file_cache_path]}/wordpress-#{node['wordpress']['version']}.tar.gz" do
+      source "#{node['wordpress']['repourl']}/wordpress-#{node['wordpress']['version']}.tar.gz"
       mode "0644"
     end
   end
-else
-  remote_file "#{Chef::Config[:file_cache_path]}/wordpress-#{node['wordpress']['version']}.tar.gz" do
-    source "#{node['wordpress']['repourl']}/wordpress-#{node['wordpress']['version']}.tar.gz"
-    mode "0644"
+
+  directory node['wordpress']['dir'] do
+    owner "root"
+    group "root"
+    mode "0755"
+    action :create
+    recursive true
   end
-end
 
-directory node['wordpress']['dir'] do
-  owner "root"
-  group "root"
-  mode "0755"
-  action :create
-  recursive true
-end
-
-execute "untar-wordpress" do
-  cwd node['wordpress']['dir']
-  command "tar --strip-components 1 -xzf #{Chef::Config[:file_cache_path]}/wordpress-#{node['wordpress']['version']}.tar.gz"
-  creates "#{node['wordpress']['dir']}/wp-settings.php"
+  execute "untar-wordpress" do
+    cwd node['wordpress']['dir']
+    command "tar --strip-components 1 -xzf #{Chef::Config[:file_cache_path]}/wordpress-#{node['wordpress']['version']}.tar.gz"
+    creates "#{node['wordpress']['dir']}/wp-settings.php"
+  end
 end
 
 execute "mysql-install-wp-privileges" do
@@ -148,16 +151,18 @@ apache_site "000-default" do
   enable false
 end
 
-ruby_block "Rename wp-content directory" do
-  block do
-    require 'fileutils'
-    # Move content directory if the destination doesn't already exist (if it does we don't want to overwrite it)
-    unless File.exists?("#{node['wordpress']['dir']}/#{node['wordpress']['content_dir']}")
-      File.rename("#{node['wordpress']['dir']}/wp-content", "#{node['wordpress']['dir']}/#{node['wordpress']['content_dir']}")
-    end
-    # Delete wp-content directroy if it was redownloaded during provisioning
-    if File.exists?("#{node['wordpress']['dir']}/wp-content")
-      FileUtils.rm_rf("#{node['wordpress']['dir']}/wp-content")
+if installingWP
+  ruby_block "Rename wp-content directory" do
+    block do
+      require 'fileutils'
+      # Move content directory if the destination doesn't already exist (if it does we don't want to overwrite it)
+      unless File.exists?("#{node['wordpress']['dir']}/#{node['wordpress']['content_dir']}")
+        File.rename("#{node['wordpress']['dir']}/wp-content", "#{node['wordpress']['dir']}/#{node['wordpress']['content_dir']}")
+      end
+      # Delete wp-content directroy if it was redownloaded during provisioning
+      if File.exists?("#{node['wordpress']['dir']}/wp-content")
+        FileUtils.rm_rf("#{node['wordpress']['dir']}/wp-content")
+      end
     end
   end
 end
