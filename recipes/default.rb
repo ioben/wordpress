@@ -146,6 +146,7 @@ template "#{node['wordpress']['dir']}/wp-config.php" do
     :logged_in_key   => node['wordpress']['keys']['logged_in'],
     :nonce_key       => node['wordpress']['keys']['nonce']
   )
+  action :create_if_missing
   notifies :write, "log[wordpress_install_message]"
 end
 
