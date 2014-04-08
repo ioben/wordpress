@@ -70,7 +70,7 @@ if node['wordpress']['install']
     owner "root"
     group "root"
     mode "0755"
-    action :create
+    action :create_if_missing
     recursive true
   end
 
