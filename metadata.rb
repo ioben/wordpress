@@ -13,8 +13,12 @@ recipe "WordPress", "Installs and configures WordPress LAMP stack on a single sy
 end
 
 depends "apache2", ">= 0.99.4"
-depends "mysql", ">= 1.5.0"
+depends "database", ">= 1.6.0"
+depends "mysql", ">= 5.0.0"
+depends "mysql-chef_gem", ">= 0.0.2"
 depends "build-essential"
+depends "iis", ">= 1.6.2"
+depends "tar", ">= 0.3.1"
 
 %w{ debian ubuntu }.each do |os|
   supports os

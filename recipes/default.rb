@@ -17,162 +17,107 @@
 # limitations under the License.
 #
 
-include_recipe "apache2"
-include_recipe "mysql::server"
 include_recipe "php"
-include_recipe "php::module_mysql"
-include_recipe "apache2::mod_php5"
 
-
-if node.has_key?("ec2")
-  server_fqdn = node['ec2']['public_hostname']
-else
-  server_fqdn = node['fqdn']
+# On Windows PHP comes with the MySQL Module and we use IIS on Windows
+unless platform? "windows"
+  include_recipe "php::module_mysql"
+  include_recipe "apache2"
+  include_recipe "apache2::mod_php5"
 end
 
-node.set_unless['wordpress']['db']['password'] = secure_password
+include_recipe "wordpress::database"
+
+::Chef::Recipe.send(:include, Opscode::OpenSSL::Password)
 node.set_unless['wordpress']['keys']['auth'] = secure_password
 node.set_unless['wordpress']['keys']['secure_auth'] = secure_password
 node.set_unless['wordpress']['keys']['logged_in'] = secure_password
 node.set_unless['wordpress']['keys']['nonce'] = secure_password
+node.set_unless['wordpress']['salt']['auth'] = secure_password
+node.set_unless['wordpress']['salt']['secure_auth'] = secure_password
+node.set_unless['wordpress']['salt']['logged_in'] = secure_password
+node.set_unless['wordpress']['salt']['nonce'] = secure_password
+node.save unless Chef::Config[:solo]
 
-node.set_unless['wordpress']['content_dir'] = 'wp-content'
-node.set_unless['wordpress']['wp_debug'] = false
-node.set_unless['wordpress']['table_prefix'] = 'wp_'
-
-node.set_unless['wordpress']['install'] = true
-node.set_unless['wordpress']['have_ssl'] = false
-
-node.set_unless['wordpress']['custom_options'] = {}
-
-if node['wordpress']['install']
-  if node['wordpress']['version'] == 'latest'
-    # WordPress.org does not provide a sha256 checksum, so we'll use the sha1 they do provide
-    require 'digest/sha1'
-    require 'open-uri'
-    local_file = "#{Chef::Config[:file_cache_path]}/wordpress-latest.tar.gz"
-    latest_sha1 = open('http://wordpress.org/latest.tar.gz.sha1') {|f| f.read }
-    unless File.exists?(local_file) && ( Digest::SHA1.hexdigest(File.read(local_file)) == latest_sha1 )
-      remote_file "#{Chef::Config[:file_cache_path]}/wordpress-latest.tar.gz" do
-        source "http://wordpress.org/latest.tar.gz"
-        mode "0644"
-      end
-    end
+directory node['wordpress']['dir'] do
+  action :create
+  recursive true
+  if platform_family?('windows')
+    rights :read, 'Everyone'
   else
-    remote_file "#{Chef::Config[:file_cache_path]}/wordpress-#{node['wordpress']['version']}.tar.gz" do
-      source "#{node['wordpress']['repourl']}/wordpress-#{node['wordpress']['version']}.tar.gz"
-      mode "0644"
-    end
-  end
-
-  directory node['wordpress']['dir'] do
-    owner "root"
-    group "root"
-    mode "0755"
-    action :create_if_missing
-    recursive true
-  end
-
-  execute "untar-wordpress" do
-    cwd node['wordpress']['dir']
-    command "tar --strip-components 1 -xzf #{Chef::Config[:file_cache_path]}/wordpress-#{node['wordpress']['version']}.tar.gz"
-    creates "#{node['wordpress']['dir']}/wp-settings.php"
+    owner node['wordpress']['install']['user']
+    group node['wordpress']['install']['group']
+    mode  '00755'
   end
 end
 
-execute "mysql-install-wp-privileges" do
-  command "/usr/bin/mysql -u root -p\"#{node['mysql']['server_root_password']}\" < #{node['mysql']['conf_dir']}/wp-grants.sql"
-  action :nothing
-end
+archive = platform_family?('windows') ? 'wordpress.zip' : 'wordpress.tar.gz'
 
-template "#{node['mysql']['conf_dir']}/wp-grants.sql" do
-  source "grants.sql.erb"
-  owner "root"
-  group "root"
-  mode "0600"
-  variables(
-    :user     => node['wordpress']['db']['user'],
-    :password => node['wordpress']['db']['password'],
-    :database => node['wordpress']['db']['database']
-  )
-  notifies :run, "execute[mysql-install-wp-privileges]", :immediately
-end
-
-execute "create #{node['wordpress']['db']['database']} database" do
-  command "/usr/bin/mysqladmin -u root -p\"#{node['mysql']['server_root_password']}\" create #{node['wordpress']['db']['database']}"
-  not_if do
-    # Make sure gem is detected if it was just installed earlier in this recipe
-    require 'rubygems'
-    Gem.clear_paths
-    require 'mysql'
-    m = Mysql.new("localhost", "root", node['mysql']['server_root_password'])
-    m.list_dbs.include?(node['wordpress']['db']['database'])
+if platform_family?('windows')
+  windows_zipfile node['wordpress']['parent_dir'] do
+    source node['wordpress']['url']
+    action :unzip
+    not_if {::File.exists?("#{node['wordpress']['dir']}\\index.php")}
   end
-  notifies :create, "ruby_block[save node data]", :immediately unless Chef::Config[:solo]
-end
-
-# save node data after writing the MYSQL root password, so that a failed chef-client run that gets this far doesn't cause an unknown password to get applied to the box without being saved in the node data.
-unless Chef::Config[:solo]
-  ruby_block "save node data" do
-    block do
-      node.save
-    end
-    action :create
+else
+  tar_extract node['wordpress']['url'] do
+    target_dir node['wordpress']['dir']
+    creates File.join(node['wordpress']['dir'], 'index.php')
+    user node['wordpress']['install']['user']
+    group node['wordpress']['install']['group']
+    tar_flags [ '--strip-components 1' ]
   end
-end
-
-log "wordpress_install_message" do
-  action :nothing
-  message "Navigate to 'http://#{server_fqdn}/wp-admin/install.php' to complete wordpress installation"
 end
 
 template "#{node['wordpress']['dir']}/wp-config.php" do
-  source "wp-config.php.erb"
-  owner "root"
-  group "root"
-  mode "0644"
+  source 'wp-config.php.erb'
+  mode 0644
   variables(
-    :have_ssl        => node['wordpress']['have_ssl'],
-    :database        => node['wordpress']['db']['database'],
-    :user            => node['wordpress']['db']['user'],
-    :password        => node['wordpress']['db']['password'],
-    :content_dir     => node['wordpress']['content_dir'],
-    :wp_debug        => node['wordpress']['wp_debug'],
-    :table_prefix    => node['wordpress']['table_prefix'],
-    :custom_options  => node['wordpress']['custom_options'],
-    :auth_key        => node['wordpress']['keys']['auth'],
-    :secure_auth_key => node['wordpress']['keys']['secure_auth'],
-    :logged_in_key   => node['wordpress']['keys']['logged_in'],
-    :nonce_key       => node['wordpress']['keys']['nonce']
+    :db_name          => node['wordpress']['db']['name'],
+    :db_user          => node['wordpress']['db']['user'],
+    :db_password      => node['wordpress']['db']['pass'],
+    :db_host          => node['wordpress']['db']['host'],
+    :db_prefix        => node['wordpress']['db']['prefix'],
+    :auth_key         => node['wordpress']['keys']['auth'],
+    :secure_auth_key  => node['wordpress']['keys']['secure_auth'],
+    :logged_in_key    => node['wordpress']['keys']['logged_in'],
+    :nonce_key        => node['wordpress']['keys']['nonce'],
+    :auth_salt        => node['wordpress']['salt']['auth'],
+    :secure_auth_salt => node['wordpress']['salt']['secure_auth'],
+    :logged_in_salt   => node['wordpress']['salt']['logged_in'],
+    :nonce_salt       => node['wordpress']['salt']['nonce'],
+    :lang             => node['wordpress']['languages']['lang'],
+    :allow_multisite  => node['wordpress']['allow_multisite'],
+    :custom_options   => node['wordpress']['custom_options']
   )
-  action :create_if_missing
-  notifies :write, "log[wordpress_install_message]"
+  owner node['wordpress']['install']['user']
+  group node['wordpress']['install']['group']
+  action :create
 end
 
-apache_site "000-default" do
-  enable false
-end
+if platform?('windows')
 
-if node['wordpress']['install']
-  ruby_block "Rename wp-content directory" do
-    block do
-      require 'fileutils'
-      # Move content directory if the destination doesn't already exist (if it does we don't want to overwrite it)
-      unless File.exists?("#{node['wordpress']['dir']}/#{node['wordpress']['content_dir']}")
-        File.rename("#{node['wordpress']['dir']}/wp-content", "#{node['wordpress']['dir']}/#{node['wordpress']['content_dir']}")
-      end
-      # Delete wp-content directroy if it was redownloaded during provisioning
-      if File.exists?("#{node['wordpress']['dir']}/wp-content")
-        FileUtils.rm_rf("#{node['wordpress']['dir']}/wp-content")
-      end
-    end
+  include_recipe 'iis::remove_default_site'
+
+  iis_pool 'WordpressPool' do
+    no_managed_code true
+    action :add
   end
-end
 
-web_app "wordpress" do
-  template "wordpress.conf.erb"
-  docroot node['wordpress']['dir']
-  server_name server_fqdn
-  server_aliases node['wordpress']['server_aliases']
-  have_ssl node['wordpress']['have_ssl']
+  iis_site 'Wordpress' do
+    protocol :http
+    port 80
+    path node['wordpress']['dir']
+    application_pool 'WordpressPool'
+    action [:add,:start]
+  end
+else
+  web_app "wordpress" do
+    template "wordpress.conf.erb"
+    docroot node['wordpress']['dir']
+    server_name node['wordpress']['server_name']
+    server_aliases node['wordpress']['server_aliases']
+    server_port node['apache']['listen_ports']
+    enable true
+  end
 end
