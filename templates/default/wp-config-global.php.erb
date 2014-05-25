@@ -1,0 +1,37 @@
+<?php
+
+/* =============================================================================
+   Content Directory Settings
+   ========================================================================== */
+define('WP_HOME',    'http://' . $_SERVER['SERVER_NAME']);
+define('WP_SITEURL', WP_HOME . '/system');
+
+define('WP_CONTENT_URL', '/<%= @content_dir %>');
+define('WP_CONTENT_DIR', ABSPATH . '<%= @content_dir %>');
+
+
+/* =============================================================================
+   Disable file modifications
+   ========================================================================== */
+define('WP_AUTO_UPDATE_CORE', false);
+define('DISABLE_WP_CRON', false);
+define('DISALLOW_FILE_EDIT', true);
+define('DISALLOW_FILE_MODS', true);
+
+/* =============================================================================
+   Internationalization / Localization
+   ========================================================================== */
+define('WPLANG', '<%= @lang %>');
+
+/* =============================================================================
+   Multisite Configuration
+   ========================================================================== */
+define('WP_ALLOW_MULTISITE', <%= @allow_multisite ? 'true' : 'false' %>);
+
+
+/** WordPress absolute path to the WordPress directory. */
+if ( !defined('ABSPATH') )
+        define('ABSPATH', dirname(__FILE__) . '/system/');
+
+/** Sets up WordPress vars and included files. */
+require_once(ABSPATH . 'wp-settings.php');

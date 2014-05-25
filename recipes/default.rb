@@ -28,6 +28,10 @@ end
 
 include_recipe "wordpress::database"
 
+package "unzip" do
+  action :install
+end
+
 ::Chef::Recipe.send(:include, Opscode::OpenSSL::Password)
 node.set_unless['wordpress']['keys']['auth'] = secure_password
 node.set_unless['wordpress']['keys']['secure_auth'] = secure_password
@@ -60,39 +64,44 @@ if platform_family?('windows')
     not_if {::File.exists?("#{node['wordpress']['dir']}\\index.php")}
   end
 else
-  tar_extract node['wordpress']['url'] do
-    target_dir node['wordpress']['dir']
+  bash "Unzip WordPress" do
+    code <<-EOH
+      curl #{node['wordpress']['url']} > wordpress.zip
+      unzip wordpress.zip -d "#{node['wordpress']['dir']}"
+      chown #{node['wordpress']['install']['user']}:#{node['wordpress']['install']['group']} "#{node['wordpress']['dir']}"
+    EOH
     creates File.join(node['wordpress']['dir'], 'index.php')
-    user node['wordpress']['install']['user']
-    group node['wordpress']['install']['group']
-    tar_flags [ '--strip-components 1' ]
+    action :run
   end
 end
 
-template "#{node['wordpress']['dir']}/wp-config.php" do
-  source 'wp-config.php.erb'
-  mode 0644
-  variables(
-    :db_name          => node['wordpress']['db']['name'],
-    :db_user          => node['wordpress']['db']['user'],
-    :db_password      => node['wordpress']['db']['pass'],
-    :db_host          => node['wordpress']['db']['host'],
-    :db_prefix        => node['wordpress']['db']['prefix'],
-    :auth_key         => node['wordpress']['keys']['auth'],
-    :secure_auth_key  => node['wordpress']['keys']['secure_auth'],
-    :logged_in_key    => node['wordpress']['keys']['logged_in'],
-    :nonce_key        => node['wordpress']['keys']['nonce'],
-    :auth_salt        => node['wordpress']['salt']['auth'],
-    :secure_auth_salt => node['wordpress']['salt']['secure_auth'],
-    :logged_in_salt   => node['wordpress']['salt']['logged_in'],
-    :nonce_salt       => node['wordpress']['salt']['nonce'],
-    :lang             => node['wordpress']['languages']['lang'],
-    :allow_multisite  => node['wordpress']['allow_multisite'],
-    :custom_options   => node['wordpress']['custom_options']
-  )
-  owner node['wordpress']['install']['user']
-  group node['wordpress']['install']['group']
-  action :create
+%w{wp-config wp-config-global}.each do |file|
+  template "#{node['wordpress']['dir']}/#{file}.php" do
+    source "#{file}.php.erb"
+    mode 0644
+    variables(
+      :db_name          => node['wordpress']['db']['name'],
+      :db_user          => node['wordpress']['db']['user'],
+      :db_password      => node['wordpress']['db']['pass'],
+      :db_host          => node['wordpress']['db']['host'],
+      :db_prefix        => node['wordpress']['db']['prefix'],
+      :auth_key         => node['wordpress']['keys']['auth'],
+      :secure_auth_key  => node['wordpress']['keys']['secure_auth'],
+      :logged_in_key    => node['wordpress']['keys']['logged_in'],
+      :nonce_key        => node['wordpress']['keys']['nonce'],
+      :auth_salt        => node['wordpress']['salt']['auth'],
+      :secure_auth_salt => node['wordpress']['salt']['secure_auth'],
+      :logged_in_salt   => node['wordpress']['salt']['logged_in'],
+      :nonce_salt       => node['wordpress']['salt']['nonce'],
+      :lang             => node['wordpress']['languages']['lang'],
+      :allow_multisite  => node['wordpress']['allow_multisite'],
+      :content_dir      => node['wordpress']['content_dir'],
+      :custom_options   => node['wordpress']['custom_options']
+    )
+    owner node['wordpress']['install']['user']
+    group node['wordpress']['install']['group']
+    action :create
+  end
 end
 
 if platform?('windows')
